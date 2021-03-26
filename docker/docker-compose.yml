@@ -1,0 +1,89 @@
+version: "3.2"
+services:
+  kong-database:
+    image: postgres:9.6
+    environment:
+      - POSTGRES_USER=kong
+      - POSTGRES_DB=kong
+      - POSTGRES_PASSWORD=kong
+    ports:
+        - 5432:5432
+    volumes:
+        - .tmp/postgresql/data:/var/lib/postgresql/data
+    networks:
+      - kong
+  kong-gateway:
+    image: kong:latest
+    environment:
+      - KONG_DATABASE=postgres
+      - KONG_PG_HOST=kong-database
+      - KONG_PG_USER=kong
+      - KONG_PG_PASSWORD=kong
+      - KONG_PASSWORD=doutorequemtemdoutorado
+      - KONG_PROXY_ACCESS_LOG=/dev/stdout
+      - KONG_ADMIN_ACCESS_LOG=/dev/stdout
+      - KONG_PROXY_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_LISTEN=0.0.0.0:8001, 0.0.0.0:8444 ssl
+      - KONG_ADMIN_GUI_URL=http://0.0.0.0:8002
+      - KONG_ADMIN_GUI_LISTEN=0.0.0.0:8002, 0.0.0.0:8445 ssl
+    volumes:
+        - ./kong.yml:/usr/local/kong/declarative/kong.yml
+    ports:
+        - 8000:8000
+        - 8443:8443
+        - 8001:8001
+        - 8002:8002
+        - 8444:8444
+        - 9000:9000
+    networks:
+      - kong
+    depends_on: 
+      - kong-database
+  konga-gateway:
+    image: pantsel/konga
+    environment:
+      - DB_ADAPTER=postgres
+      - DB_HOST=kong-database
+      - DB_PORT=5432
+      - DB_USER=kong
+      - DB_PASSWORD=kong
+    volumes:
+        - ./kong.yml:/usr/local/kong/declarative/kong.yml
+    ports:
+        - 1337:1337
+    networks:
+      - kong
+    depends_on: 
+      - kong-gateway
+  grafana:
+      image: grafana/grafana:latest
+      ports:
+          - "3000:3000"
+      environment:
+          - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-worldmap-panel,grafana-piechart-panel
+      volumes:
+          - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+          - ./grafana/provisioning:/etc/grafana/provisioning
+          - ./grafana/dashboards:/var/lib/grafana/dashboards
+      networks:
+        - kong
+  prometheus:
+      image: prom/prometheus
+      container_name: prometheus
+      restart: always
+      volumes: 
+        - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      command: "--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus"
+      ports: 
+        - 9090:9090      
+      networks:
+        - kong    
+  chip:
+    image: fidelissauro/chip:v1
+    ports:
+        - 5000:8080
+    networks:
+      - kong
+networks:
+  kong:
